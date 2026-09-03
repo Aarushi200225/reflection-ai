@@ -15,6 +15,7 @@ import firebase_admin
 from firebase_admin import auth as fb_auth, credentials
 
 from agent_extract import extract_entry
+from agent_reflect import reflect
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("agent-tier")
@@ -59,6 +60,26 @@ class ExtractRequest(BaseModel):
     entryText: str = Field(default="", max_length=20000)
 
 
+class Message(BaseModel):
+    role: str = "user"
+    content: str = ""
+
+
+class PastEntry(BaseModel):
+    date: str = ""
+    summary: str = ""
+    title: str = ""
+    preview: str = ""
+    themes: list[str] = Field(default_factory=list)
+
+
+class ReflectRequest(BaseModel):
+    currentEntry: str = Field(default="", max_length=20000)
+    history: list[Message] = Field(default_factory=list)
+    pastEntries: list[PastEntry] = Field(default_factory=list)
+    currentThemes: list[str] = Field(default_factory=list)
+
+
 # --- Routes ------------------------------------------------------------------
 @app.get("/health")
 async def health():
@@ -78,4 +99,17 @@ async def agent_extract(body: ExtractRequest, uid: str = Depends(verify_token)):
     return {"success": True, "data": result}
 
 
-# /agent/reflect and /agent/insight arrive in Steps 3 and 4.
+@app.post("/agent/reflect")
+async def agent_reflect(body: ReflectRequest, uid: str = Depends(verify_token)):
+    """Grounded reflection over the user's own past entries (passed in the request).
+    uid is verified but the agent is stateless — it grounds only on supplied data."""
+    result = reflect(
+        current_entry=body.currentEntry,
+        history=[m.model_dump() for m in body.history],
+        past_entries=[p.model_dump() for p in body.pastEntries],
+        current_themes=body.currentThemes,
+    )
+    return {"success": True, "data": result}
+
+
+# /agent/insight (sandbox) arrives in Step 4.
