@@ -1,0 +1,17 @@
+{
+  "entities": {
+    "UserInteractions": {
+      "collection": "users/{userId}/interactions",
+      "fields": {
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "createdAt": { "type": "timestamp" },
+        "updatedAt": { "type": "timestamp" },
+        "messages": { "type": "array" },
+        "insights": { "type": "object" },
+        "tags": { "type": "array" },
+        "mood": { "type": "string" }
+      }
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "Reflection.ai - Private Journal & Grounded AI Brain",
+  "description": "A user-authenticated journaling and reflection app with Gemini 3.6-flash, per-user ABAC Firestore isolation, Consistency Mindscape streak tracking, and Journal Wrapped summaries.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
