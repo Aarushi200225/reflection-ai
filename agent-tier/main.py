@@ -1,26 +1,25 @@
 """
 Reflection.ai — Agent Tier (Python + FastAPI + Google ADK)
-Build Step 1: skeleton + Firebase ID token verification.
+Step 2: extraction agent wired behind the token gate.
 
-STATELESS by design: this service never reads Firestore. It verifies the caller's
-Firebase ID token (authN only), then operates solely on data passed in the request.
-Agents (extraction / reflection / insight) are added in later build steps.
+STATELESS: never reads Firestore. Verifies the caller's Firebase ID token (authN),
+then operates only on data passed in the request.
 """
 import os
 import logging
 from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 import firebase_admin
 from firebase_admin import auth as fb_auth, credentials
+
+from agent_extract import extract_entry
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("agent-tier")
 
 # --- Firebase Admin init -----------------------------------------------------
-# On Cloud Run, Application Default Credentials (the service account) are used
-# automatically — no key file, no secret needed for token verification.
 if not firebase_admin._apps:
     try:
         firebase_admin.initialize_app(credentials.ApplicationDefault())
@@ -28,9 +27,8 @@ if not firebase_admin._apps:
         log.warning("ADC init fallback: %s", e)
         firebase_admin.initialize_app()
 
-app = FastAPI(title="Reflection.ai Agent Tier", version="0.1.0")
+app = FastAPI(title="Reflection.ai Agent Tier", version="0.2.0")
 
-# CORS: allow the web tier origin only (set WEB_ORIGIN env at deploy time).
 _web_origin = os.getenv("WEB_ORIGIN", "*")
 app.add_middleware(
     CORSMiddleware,
@@ -40,10 +38,8 @@ app.add_middleware(
 )
 
 
-# --- AuthN dependency: verify Firebase ID token ------------------------------
+# --- AuthN dependency ---------------------------------------------------------
 async def verify_token(request: Request) -> str:
-    """Verify the Bearer Firebase ID token. Returns the uid, or raises 401.
-    The uid is taken ONLY from the verified token — never from the request body."""
     header = request.headers.get("Authorization", "")
     if not header.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing bearer token.")
@@ -58,18 +54,28 @@ async def verify_token(request: Request) -> str:
         raise HTTPException(status_code=401, detail="Invalid or expired token.")
 
 
-# --- Health (no auth) --------------------------------------------------------
+# --- Schemas -----------------------------------------------------------------
+class ExtractRequest(BaseModel):
+    entryText: str = Field(default="", max_length=20000)
+
+
+# --- Routes ------------------------------------------------------------------
 @app.get("/health")
 async def health():
-    return {"status": "ok", "aiConfigured": bool(os.getenv("GEMINI_API_KEY"))}
+    return {"status": "ok"}
 
 
-# --- Protected probe (proves auth works end-to-end) --------------------------
 @app.get("/agent/whoami")
 async def whoami(uid: str = Depends(verify_token)):
-    # Returns the verified uid only. No DB, no data — just proves the gate works.
     return {"uid": uid, "verified": True}
 
 
-# Agent endpoints (/agent/extract, /agent/reflect, /agent/insight) land in the
-# next build steps, each behind Depends(verify_token).
+@app.post("/agent/extract")
+async def agent_extract(body: ExtractRequest, uid: str = Depends(verify_token)):
+    """Extract structured metadata from one entry. uid is verified but the agent is
+    stateless — it only processes the text in the request body."""
+    result = extract_entry(body.entryText)
+    return {"success": True, "data": result}
+
+
+# /agent/reflect and /agent/insight arrive in Steps 3 and 4.
