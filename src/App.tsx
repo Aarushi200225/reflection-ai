@@ -197,6 +197,8 @@ export default function App() {
           date: item.createdAt.slice(0, 10),
           title: item.title,
           summary: item.insights?.synthesis || item.messages?.[0]?.content?.slice(0, 150) || '',
+          themes: item.insights?.keyThemes || item.tags || [],
+          preview: item.messages?.[0]?.content?.slice(0, 200) || '',
         }));
 
       // 3. Call server-side Gemini reflection endpoint with token attached
