@@ -24,11 +24,15 @@ log = logging.getLogger("agent-tier")
 
 # --- Firebase Admin init -----------------------------------------------------
 if not firebase_admin._apps:
+    _fb_project = os.getenv("FIREBASE_PROJECT_ID", "gen-lang-client-0057557227")
     try:
-        firebase_admin.initialize_app(credentials.ApplicationDefault())
-    except Exception as e:  # noqa: BLE001
+        firebase_admin.initialize_app(
+            credentials.ApplicationDefault(),
+            {"projectId": _fb_project},
+        )
+    except Exception as e:
         log.warning("ADC init fallback: %s", e)
-        firebase_admin.initialize_app()
+        firebase_admin.initialize_app(options={"projectId": _fb_project})
 
 app = FastAPI(title="Reflection.ai Agent Tier", version="0.2.0")
 
