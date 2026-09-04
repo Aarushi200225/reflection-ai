@@ -1,7 +1,19 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut as firebaseSignOut, onAuthStateChanged, User } from 'firebase/auth';
 import { getFirestore, initializeFirestore } from 'firebase/firestore';
-import firebaseConfig from '../firebase-applet-config.json';
+
+const firebaseConfig = {
+  projectId: "gen-lang-client-0057557227",
+  appId: "1:428689761489:web:6afd57db249afa151711f0",
+  apiKey: "AIzaSyBUd36gUgoC_HCxtOG98OuNAWrumZF2JoM",
+  authDomain: "gen-lang-client-0057557227.firebaseapp.com",
+  firestoreDatabaseId: "ai-studio-b90bb679-8d64-4823-92a7-aae7933e1021",
+  storageBucket: "gen-lang-client-0057557227.firebasestorage.app",
+  messagingSenderId: "428689761489",
+  measurementId: "",
+  oAuthClientId: "428689761489-uvpnvsnfecq7dti4drf5nadmneb3p9pg.apps.googleusercontent.com",
+  recaptchaSiteKey: ""
+};
 
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
