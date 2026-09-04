@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { auth, onAuthStateChanged, User } from './firebase';
+import { auth, onAuthStateChanged, User, authedFetch } from './firebase';
 import {
   subscribeToUserInteractions,
   saveUserInteraction,
@@ -199,15 +199,12 @@ export default function App() {
           summary: item.insights?.synthesis || item.messages?.[0]?.content?.slice(0, 150) || '',
         }));
 
-      // 3. Call server-side Gemini reflection endpoint
-      const response = await fetch('/api/gemini/reflect', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: updatedMessages,
-          currentEntry: text,
-          journalContext: pastContext,
-        }),
+      // 3. Call server-side Gemini reflection endpoint with token attached
+      const response = await authedFetch('/api/gemini/reflect', {
+        messages: updatedMessages,
+        currentEntry: text,
+        journalContext: pastContext,
+        currentThemes: optimisticDoc.tags || [],
       });
 
       const result = await response.json();
