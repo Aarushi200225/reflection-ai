@@ -2,6 +2,7 @@ fastapi==0.115.*
 uvicorn[standard]==0.32.*
 firebase-admin==6.*
 google-genai
+google-cloud-secret-manager
 langgraph
 langchain-core
 langchain-google-genai
