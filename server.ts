@@ -1,7 +1,6 @@
 import express from 'express';
 import path from 'path';
 import dotenv from 'dotenv';
-import { GoogleGenAI } from '@google/genai';
 import { createServer as createViteServer } from 'vite';
 
 dotenv.config();
@@ -9,278 +8,136 @@ dotenv.config();
 const app = express();
 const PORT = 3000;
 
-// Top-level Request Deserialization & Payload Security
+// Top-level Request Deserialization & Payload Security (middleware BEFORE routes)
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true, limit: '5mb' }));
 
-// Lazy GoogleGenAI client
-let genAI: GoogleGenAI | null = null;
-function getGenAI(): GoogleGenAI {
-  if (!genAI) {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      console.warn('GEMINI_API_KEY environment variable is not set. Mock responses or error will be handled gracefully.');
-    }
-    genAI = new GoogleGenAI({ apiKey: apiKey || '' });
-  }
-  return genAI;
-}
-
-// Resilient Model Fallback Ladder
-const MODEL_FALLBACK_LADDER = [
-  'gemini-3.6-flash',
-  'gemini-3.1-flash-lite',
-  'gemini-flash-latest',
-  'gemini-3.7-flash',
-] as const;
+// Agent tier (LangGraph multi-agent orchestrator on Cloud Run)
+const AGENT_SERVICE_URL =
+  process.env.AGENT_SERVICE_URL || 'https://agent-tier-588215440350.us-central1.run.app';
 
 /**
- * Standard Helper: generateContentWithFallback
- * Iterates through model ladder on 503, 429, 404, 500 errors.
+ * Proxy a request to the agent tier's /agent/run orchestrator.
+ * Forwards the caller's Firebase ID token so the agent tier verifies identity
+ * (defense-in-depth). This web tier holds no Gemini key — all AI is in the agent tier.
  */
-async function generateContentWithFallback(params: {
-  contents: any;
-  systemInstruction?: string;
-  responseMimeType?: string;
-  responseSchema?: any;
-}) {
-  const ai = getGenAI();
-  let lastError: any = null;
-
-  for (const model of MODEL_FALLBACK_LADDER) {
-    try {
-      const response = await ai.models.generateContent({
-        model,
-        contents: params.contents,
-        config: {
-          systemInstruction: params.systemInstruction,
-          responseMimeType: params.responseMimeType,
-          responseSchema: params.responseSchema,
-        },
-      });
-
-      if (response && response.text) {
-        return {
-          text: response.text,
-          modelUsed: model,
-        };
-      }
-    } catch (err: any) {
-      lastError = err;
-      console.warn(`[Gemini Fallback] Model ${model} encountered an issue: ${err?.message || err}. Escalating down ladder...`);
-    }
+async function callAgent(intent: string, payload: any, authHeader?: string) {
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const e: any = new Error('Missing authentication token.');
+    e.status = 401;
+    throw e;
   }
-
-  throw new Error(`All Gemini models in fallback ladder exhausted. Last error: ${lastError?.message || 'Unknown error'}`);
+  const resp = await fetch(`${AGENT_SERVICE_URL}/agent/run`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: authHeader },
+    body: JSON.stringify({ intent, payload }),
+  });
+  const json = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    const e: any = new Error(json?.detail || `Agent tier error (${resp.status})`);
+    e.status = resp.status;
+    throw e;
+  }
+  return json; // { success, intent, data }
 }
 
-// API Health Check
+// Health check
 app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    aiConfigured: Boolean(process.env.GEMINI_API_KEY),
-  });
+  res.json({ status: 'ok', timestamp: new Date().toISOString(), agentTier: AGENT_SERVICE_URL });
 });
 
-// POST /api/gemini/reflect - Multi-turn grounded reflection & synthesis
+// POST /api/gemini/reflect -> agent tier intent "reflect"
 app.post('/api/gemini/reflect', async (req, res) => {
   try {
     const body = req.body && typeof req.body === 'object' ? req.body : {};
-    const { messages = [], currentEntry = '', journalContext = [] } = body;
-
+    const { messages = [], currentEntry = '', journalContext = [], currentThemes = [] } = body;
     if (!currentEntry && (!messages || messages.length === 0)) {
-      return res.status(400).json({ error: 'Journal content or message history is required.' });
+      return res.status(400).json({ success: false, error: 'Journal content or message history is required.' });
     }
-
-    // Defensive string sanitization
-    const sanitizedEntry = typeof currentEntry === 'string' ? currentEntry.slice(0, 15000) : '';
-    
-    // Structure multi-turn messages
-    const formattedHistory = Array.isArray(messages)
-      ? messages.slice(-10).map((m: any) => ({
-          role: m.role === 'user' ? 'user' : 'model',
-          parts: [{ text: String(m.content || m.text || '').slice(0, 5000) }],
-        }))
-      : [];
-
-    // Add current entry if provided and not already in formattedHistory
-    if (sanitizedEntry) {
-      formattedHistory.push({
-        role: 'user',
-        parts: [{ text: `Journal reflection entry:\n${sanitizedEntry}` }],
-      });
-    }
-
-    // Context from user's own past journal entries for personalized RAG
-    const pastContextSummary = Array.isArray(journalContext) && journalContext.length > 0
-      ? `\n\n[USER'S PREVIOUS JOURNAL ENTRIES FOR CONTEXT - STRICTLY ISOLATED TO THIS USER]:\n` +
-        journalContext
-          .slice(0, 5)
-          .map((ctx: any, i: number) => `Entry #${i + 1} (${ctx.date || 'Past'}): ${String(ctx.summary || ctx.title || ctx.preview || '').slice(0, 250)}`)
-          .join('\n')
-      : '';
-
-    const systemInstruction = `You are a supportive, grounded personal reflection companion and second brain.
-Your goal is to help the user unpack their thoughts, recognize cognitive patterns, celebrate wins, and ask thoughtful clarifying questions.
-Tone: Empathetic, question-first, never judgmental, never preachy or robotic.
-Always ground your answers in the user's personal context when available, rather than dispensing generic life advice.
-
-In addition to your main conversational reflection, provide a short synthesis and tags in the following structured JSON format:
-\`\`\`json
-{
-  "reflection": "Your main empathetic, insightful reflection response (use clean markdown with paragraphs, bullet points if helpful)...",
-  "synthesis": "A 1-2 sentence core analytical takeaway of the user's current mindset or challenge.",
-  "keyThemes": ["Theme1", "Theme2", "Theme3"],
-  "mood": "Focused" | "Grateful" | "Reflective" | "Stressed" | "Optimistic" | "Fatigued" | "Energetic",
-  "actionablePrompt": "One optional, gentle follow-up question or micro-action to consider."
-}
-\`\`\`
-Return only valid JSON matching this structure.`;
-
-    const result = await generateContentWithFallback({
-      contents: formattedHistory.length > 0 ? formattedHistory : [{ role: 'user', parts: [{ text: sanitizedEntry }] }],
-      systemInstruction: systemInstruction + pastContextSummary,
-      responseMimeType: 'application/json',
-    });
-
-    let parsedResponse;
-    try {
-      // Clean up markdown formatting if wrapped in ```json ... ```
-      let cleanedText = result.text.trim();
-      if (cleanedText.startsWith('```json')) {
-        cleanedText = cleanedText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-      } else if (cleanedText.startsWith('```')) {
-        cleanedText = cleanedText.replace(/^```\s*/, '').replace(/\s*```$/, '');
-      }
-      parsedResponse = JSON.parse(cleanedText);
-    } catch (parseErr) {
-      parsedResponse = {
-        reflection: result.text,
-        synthesis: "Reflection generated successfully.",
-        keyThemes: ["Journaling", "Personal Growth"],
-        mood: "Reflective",
-        actionablePrompt: "What else is on your mind regarding this today?"
-      };
-    }
-
-    return res.json({
-      success: true,
-      modelUsed: result.modelUsed,
-      data: parsedResponse,
-    });
+    const result = await callAgent(
+      'reflect',
+      {
+        currentEntry: String(currentEntry).slice(0, 15000),
+        history: Array.isArray(messages) ? messages.slice(-10) : [],
+        pastEntries: Array.isArray(journalContext) ? journalContext.slice(0, 5) : [],
+        currentThemes: Array.isArray(currentThemes) ? currentThemes : [],
+      },
+      req.headers.authorization
+    );
+    return res.json({ success: true, data: result.data });
   } catch (error: any) {
-    console.error('Error processing reflection:', error);
-    return res.status(500).json({
-      success: false,
-      error: error?.message || 'Failed to generate reflection. Please try again.',
-    });
+    console.error('Reflect proxy error:', error?.message);
+    return res.status(error?.status || 500).json({ success: false, error: error?.message || 'Reflection failed.' });
   }
 });
 
-// POST /api/gemini/wrap - Aggregate Journal Wrapped synthesis
+// POST /api/gemini/wrap -> agent tier intent "insight" (aggregate analytics + narrative)
 app.post('/api/gemini/wrap', async (req, res) => {
   try {
     const body = req.body && typeof req.body === 'object' ? req.body : {};
-    const { entries = [], periodName = 'Weekly Recap' } = body;
-
+    const { entries = [] } = body;
     if (!Array.isArray(entries) || entries.length === 0) {
-      return res.status(400).json({ error: 'No journal entries available to wrap.' });
+      return res.status(400).json({ success: false, error: 'No journal entries available to wrap.' });
     }
-
-    const compiledEntries = entries.slice(0, 15).map((e: any, i: number) => {
-      const title = e.title || `Entry ${i + 1}`;
-      const date = e.createdAt || e.date || 'Recent';
-      const summary = e.summary || e.insights?.synthesis || '';
-      const text = e.messages?.[0]?.content || e.content || '';
-      return `### [${date}] ${title}\nSynthesis: ${summary}\nExcerpt: ${String(text).slice(0, 300)}`;
-    }).join('\n\n');
-
-    const systemInstruction = `You are an insightful personal biographer and habit analyst.
-Analyze the user's journal entries from this period (${periodName}) and generate a heartwarming, empowering "Journal Wrapped" report.
-Celebrate their consistency, highlight dominant themes, spotlight moments of clarity, and note positive mindset shifts.
-
-Output valid JSON in this schema:
-\`\`\`json
-{
-  "periodTitle": "${periodName}",
-  "headline": "Punchy, personalized headline summarizing this period",
-  "dominantMood": "Primary emotional vibe",
-  "topThemes": ["Theme 1", "Theme 2", "Theme 3", "Theme 4"],
-  "deepInsights": [
-    "Key insight 1 highlighting habit consistency or breakthroughs",
-    "Key insight 2 regarding self-awareness or resilience"
-  ],
-  "mindsetShift": "Description of how the user's perspective evolved across these entries",
-  "goldenQuote": "An inspiring takeaway or memorable thought derived from their writings",
-  "nextPeriodFocus": "A gentle, uplifting intention for the upcoming days"
-}
-\`\`\``;
-
-    const result = await generateContentWithFallback({
-      contents: [{
-        role: 'user',
-        parts: [{ text: `Here are my entries for ${periodName}:\n\n${compiledEntries}` }],
-      }],
-      systemInstruction,
-      responseMimeType: 'application/json',
-    });
-
-    let parsedWrapped;
-    try {
-      let cleaned = result.text.trim();
-      if (cleaned.startsWith('```json')) {
-        cleaned = cleaned.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-      } else if (cleaned.startsWith('```')) {
-        cleaned = cleaned.replace(/^```\s*/, '').replace(/\s*```$/, '');
-      }
-      parsedWrapped = JSON.parse(cleaned);
-    } catch (e) {
-      parsedWrapped = {
-        periodTitle: periodName,
-        headline: "A Period of Deep Reflection and Growth",
-        dominantMood: "Reflective",
-        topThemes: ["Focus", "Consistency", "Personal Growth"],
-        deepInsights: ["Maintained a consistent rhythm of reflection and intentionality."],
-        mindsetShift: "Increased self-awareness and focus on high-leverage habits.",
-        goldenQuote: "Small reflections each day compound into extraordinary clarity.",
-        nextPeriodFocus: "Continue showing up for your daily reflections."
-      };
-    }
-
-    return res.json({
-      success: true,
-      modelUsed: result.modelUsed,
-      data: parsedWrapped,
-    });
+    // Shape entries for the insight agent
+    const shaped = entries.slice(0, 30).map((e: any) => ({
+      date: (e.createdAt || e.date || '').slice(0, 10),
+      mood: e.mood || e.insights?.mood || '',
+      themes: e.insights?.keyThemes || e.tags || [],
+      text: e.messages?.[0]?.content || e.content || '',
+      summary: e.insights?.synthesis || e.summary || '',
+    }));
+    const result = await callAgent('insight', { entries: shaped }, req.headers.authorization);
+    // Map insight-agent output (analytics + narrative) -> Wrapped modal's expected shape.
+    const a = result?.data?.analytics || {};
+    const topThemes = Array.isArray(a.topThemes) ? a.topThemes.map((t: any) => (Array.isArray(t) ? t[0] : t)).slice(0, 4) : [];
+    const moodDist = a.moodDistribution || {};
+    const dominantMood = Object.keys(moodDist).sort((x, y) => (moodDist[y] || 0) - (moodDist[x] || 0))[0] || 'Reflective';
+    const wrapped = {
+      periodTitle: 'Recent Reflections',
+      headline: result?.data?.narrative || 'A Period of Reflection and Growth',
+      dominantMood,
+      topThemes,
+      deepInsights: [
+        `You've logged ${a.entryCount ?? shaped.length} reflections with a ${a.activeStreak ?? 0}-day active streak.`,
+        `Your mood trend across this period reads as "${a.moodTrend || 'steady'}".`,
+      ],
+      mindsetShift: result?.data?.narrative || '',
+      goldenQuote: result?.data?.narrative || '',
+      nextPeriodFocus: 'Keep showing up for your reflections — consistency compounds.',
+    };
+    return res.json({ success: true, data: wrapped });
   } catch (error: any) {
-    console.error('Error generating wrapped:', error);
-    return res.status(500).json({
-      success: false,
-      error: error?.message || 'Failed to generate Journal Wrapped.',
-    });
+    console.error('Wrap proxy error:', error?.message);
+    return res.status(error?.status || 500).json({ success: false, error: error?.message || 'Journal Wrapped failed.' });
+  }
+});
+
+// POST /api/gemini/insight -> explicit insight endpoint (same intent)
+app.post('/api/gemini/insight', async (req, res) => {
+  try {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const { entries = [] } = body;
+    const result = await callAgent('insight', { entries: Array.isArray(entries) ? entries.slice(0, 200) : [] }, req.headers.authorization);
+    return res.json({ success: true, data: result.data });
+  } catch (error: any) {
+    console.error('Insight proxy error:', error?.message);
+    return res.status(error?.status || 500).json({ success: false, error: error?.message || 'Insight failed.' });
   }
 });
 
 // Vite Middleware Setup
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
-    });
+    const vite = await createViteServer({ server: { middlewareMode: true }, appType: 'spa' });
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
+    app.get('*', (req, res) => { res.sendFile(path.join(distPath, 'index.html')); });
   }
-
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on port ${PORT} with Gemini fallback ladder & Firestore ABAC security`);
+    console.log(`Web tier on ${PORT} -> agent tier at ${AGENT_SERVICE_URL}`);
   });
 }
-
 startServer();
