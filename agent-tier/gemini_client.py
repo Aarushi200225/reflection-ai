@@ -55,3 +55,24 @@ def generate_json(system_instruction: str, user_text: str) -> dict:
             log.warning("Model %s failed (%s). Laddering down...", model, e)
 
     raise RuntimeError(f"Gemini ladder exhausted. Last error: {last_err}")
+
+
+def get_client_text(system_instruction: str, user_text: str) -> str:
+    """Generate a PLAIN TEXT response (e.g. code), laddering models on error.
+    Returns the raw text. Raises if the whole ladder is exhausted."""
+    client = _client_singleton()
+    last_err = None
+    for model in MODEL_LADDER:
+        try:
+            resp = client.models.generate_content(
+                model=model,
+                contents=user_text,
+                config=types.GenerateContentConfig(
+                    system_instruction=system_instruction,
+                ),
+            )
+            return (resp.text or "").strip()
+        except Exception as e:  # noqa: BLE001
+            last_err = e
+            log.warning("Model %s failed (%s). Laddering down...", model, e)
+    raise RuntimeError(f"Gemini ladder exhausted (text). Last error: {last_err}")

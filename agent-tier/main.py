@@ -16,6 +16,7 @@ from firebase_admin import auth as fb_auth, credentials
 
 from agent_extract import extract_entry
 from agent_reflect import reflect
+from agent_insight import compute_insights
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("agent-tier")
@@ -80,6 +81,18 @@ class ReflectRequest(BaseModel):
     currentThemes: list[str] = Field(default_factory=list)
 
 
+class InsightEntry(BaseModel):
+    date: str = ""
+    mood: str = ""
+    themes: list[str] = Field(default_factory=list)
+    text: str = ""
+    summary: str = ""
+
+
+class InsightRequest(BaseModel):
+    entries: list[InsightEntry] = Field(default_factory=list)
+
+
 # --- Routes ------------------------------------------------------------------
 @app.get("/health")
 async def health():
@@ -112,4 +125,14 @@ async def agent_reflect(body: ReflectRequest, uid: str = Depends(verify_token)):
     return {"success": True, "data": result}
 
 
-# /agent/insight (sandbox) arrives in Step 4.
+@app.post("/agent/insight")
+async def agent_insight(body: InsightRequest, uid: str = Depends(verify_token)):
+    """Sandbox insight agent: Gemini writes analysis code, it runs in an isolated
+    Cloud Run sandbox, and we return computed trends + a narrative. Stateless; the
+    sandbox sees only the entries passed in, never secrets or the DB."""
+    try:
+        result = compute_insights([e.model_dump() for e in body.entries])
+        return {"success": True, "data": result}
+    except Exception as e:  # noqa: BLE001
+        log.error("Insight agent failed: %s", e)
+        raise HTTPException(status_code=503, detail=f"Insight computation unavailable: {e}")
