@@ -17,6 +17,7 @@ from firebase_admin import auth as fb_auth, credentials
 from agent_extract import extract_entry
 from agent_reflect import reflect
 from agent_insight import compute_insights
+from orchestrator import route as orchestrate
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("agent-tier")
@@ -136,3 +137,21 @@ async def agent_insight(body: InsightRequest, uid: str = Depends(verify_token)):
     except Exception as e:  # noqa: BLE001
         log.error("Insight agent failed: %s", e)
         raise HTTPException(status_code=503, detail=f"Insight computation unavailable: {e}")
+
+
+class RunRequest(BaseModel):
+    intent: str
+    payload: dict = Field(default_factory=dict)
+
+
+@app.post("/agent/run")
+async def agent_run(body: RunRequest, uid: str = Depends(verify_token)):
+    """Orchestrator entry point: routes intent (extract|reflect|insight) to the agent."""
+    try:
+        result = orchestrate(body.intent, body.payload)
+        return {"success": True, "intent": body.intent, "data": result}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:  # noqa: BLE001
+        log.error("Orchestration failed: %s", e)
+        raise HTTPException(status_code=503, detail=f"Agent unavailable: {e}")
