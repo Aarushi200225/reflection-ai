@@ -28,13 +28,10 @@ export const JournalWrappedModal: React.FC<JournalWrappedModalProps> = ({
       setLoading(true);
       setError(null);
 
-      const res = await fetch('/api/gemini/wrap', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          entries: interactions,
-          periodName: 'Recent Reflections',
-        }),
+      const { authedFetch } = await import('../firebase');
+      const res = await authedFetch('/api/gemini/wrap', {
+        entries: interactions,
+        periodName: 'Recent Reflections',
       });
 
       const json = await res.json();
