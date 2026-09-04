@@ -36,3 +36,16 @@ export const signOut = async () => {
 };
 
 export { onAuthStateChanged, type User };
+
+// Fetch with the current user's Firebase ID token attached (for agent-tier auth).
+export async function authedFetch(url: string, body: any) {
+  const user = auth.currentUser;
+  if (!user) throw new Error('You must be signed in.');
+  const token = await user.getIdToken();
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(body),
+  });
+  return res;
+}
