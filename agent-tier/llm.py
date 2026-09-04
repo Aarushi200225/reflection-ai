@@ -29,10 +29,26 @@ def _llm(json_mode: bool):
     return primary.with_fallbacks([_mk(m, json_mode) for m in MODEL_LADDER[1:]])
 
 
+def _content_to_text(resp) -> str:
+    """LangChain content can be a str OR a list of content blocks. Normalize to str."""
+    c = getattr(resp, "content", "")
+    if isinstance(c, str):
+        return c.strip()
+    if isinstance(c, list):
+        parts = []
+        for block in c:
+            if isinstance(block, str):
+                parts.append(block)
+            elif isinstance(block, dict):
+                parts.append(block.get("text", "") or block.get("content", ""))
+        return "".join(parts).strip()
+    return str(c).strip()
+
+
 def invoke_json(system: str, user: str) -> dict:
     """Invoke the ladder expecting JSON; parse and return dict."""
     resp = _llm(True).invoke([SystemMessage(content=system), HumanMessage(content=user)])
-    text = (resp.content or "").strip()
+    text = _content_to_text(resp)
     if text.startswith("```"):
         text = text.split("```", 2)[1].removeprefix("json").strip()
     return json.loads(text)
@@ -41,4 +57,4 @@ def invoke_json(system: str, user: str) -> dict:
 def invoke_text(system: str, user: str) -> str:
     """Invoke the ladder expecting plain text (e.g. code generation)."""
     resp = _llm(False).invoke([SystemMessage(content=system), HumanMessage(content=user)])
-    return (resp.content or "").strip()
+    return _content_to_text(resp)
