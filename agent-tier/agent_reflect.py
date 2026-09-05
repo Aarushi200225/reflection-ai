@@ -22,7 +22,7 @@ def _fallback():
 def reflect(current_entry, history, past_entries, current_themes=None):
     entry = (current_entry or "").strip()[:15000]
     relevant = select_relevant(entry, current_themes or [], past_entries or [], top_k=3)
-        log.info("reflect: received %d past entries, %d relevant after retrieval",
+    log.info("reflect: received %d past entries, %d relevant after retrieval",
              len(past_entries or []), len(relevant))
     if relevant:
         lines = [f"Entry #{i} ({e.get('date','past')}): {str(e.get('summary') or e.get('title') or e.get('preview') or '')[:250]}"
