@@ -28,10 +28,25 @@ def _clean(t):
 def _run(code, stdin, timeout=25):
     if not os.path.exists(SANDBOX_BIN):
         raise RuntimeError("Sandbox binary unavailable (deploy without --sandbox-launcher).")
-    p = subprocess.run([SANDBOX_BIN,"do","--","/usr/bin/python3","-c",code],
-                       input=stdin, capture_output=True, text=True, timeout=timeout)
-    if p.returncode != 0: raise RuntimeError(f"Sandbox failed: {p.stderr[:500]}")
-    return p.stdout.strip()
+    import tempfile
+    # Write generated code to a temp .py file, execute the FILE (not -c inline),
+    # so multi-line/indented scripts run correctly inside the sandbox.
+    with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False, dir="/tmp") as f:
+        f.write(code)
+        script_path = f.name
+    try:
+        p = subprocess.run(
+            [SANDBOX_BIN, "do", "--", "/usr/bin/python3", script_path],
+            input=stdin, capture_output=True, text=True, timeout=timeout,
+        )
+        if p.returncode != 0:
+            raise RuntimeError(f"Sandbox failed: {p.stderr[:500]}")
+        return p.stdout.strip()
+    finally:
+        try:
+            os.remove(script_path)
+        except OSError:
+            pass
 
 def compute_insights(entries):
     safe = [{"date":str(e.get("date",""))[:10],"mood":str(e.get("mood",""))[:30],
