@@ -23,6 +23,7 @@ export interface JournalInteraction {
   tags?: string[];
   mood?: string;
   pinned?: boolean;
+  location?: EntryLocation;
 }
 
 export interface WrappedReport {
@@ -43,4 +44,10 @@ export interface StreakStats {
   thisMonthCount: number;
   activeDates: string[]; // ['YYYY-MM-DD']
   consistencyPercentile: number;
+}
+
+export interface EntryLocation {
+  lat: number;
+  lng: number;
+  label: string; // human-readable place name
 }
