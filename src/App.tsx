@@ -123,6 +123,19 @@ export default function App() {
     }
   };
 
+  const handleAddLocation = async () => {
+    if (!user || !activeInteraction) return;
+    try {
+      const location = await captureLocation();
+      const updated = { ...activeInteraction, location, updatedAt: new Date().toISOString() };
+      setActiveInteraction(updated);
+      await saveUserInteraction(user.uid, updated);
+    } 
+    catch (err: any) {
+      setError(err?.message || 'Could not get your location.');
+    }
+  };
+
   // Delete an interaction
   const handleDeleteInteraction = async (interactionId: string) => {
     if (!user) return;
@@ -310,6 +323,7 @@ export default function App() {
             interaction={activeOrPlaceholder}
             onUpdateInteraction={handleUpdateInteraction}
             onSendToGemini={handleSendToGemini}
+            onAddLocation={handleAddLocation}
             isThinking={isThinking}
             isSaving={isSaving}
             error={error}
