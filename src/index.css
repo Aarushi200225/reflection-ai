@@ -1,41 +1,91 @@
 @import "tailwindcss";
 
+/* ============================================================
+   Promptuary — "Warm Dawn" palette
+   Gender-neutral, warm, calming-but-happy, gently playful.
+   ============================================================ */
+:root {
+  --p-cream:      #FBF7F0;  /* warm base background */
+  --p-cream-2:    #F5EEE3;  /* slightly deeper cream for panels */
+  --p-sage:       #6FB2A0;  /* calming primary (sage-teal) */
+  --p-sage-deep:  #4E9585;  /* primary hover / deeper */
+  --p-coral:      #F4A28C;  /* happy accent (soft apricot-coral) */
+  --p-coral-deep: #E8846B;  /* accent hover */
+  --p-lav:        #B9A8D6;  /* muted lavender secondary */
+  --p-ink:        #3A3A44;  /* warm near-black text */
+  --p-ink-soft:   #6B6B78;  /* secondary text */
+  --p-line:       #EAE0D2;  /* warm hairline borders */
+}
+
+/* Global warmth: background + base typography */
+body {
+  background-color: var(--p-cream);
+  color: var(--p-ink);
+}
+
+/* Warm, soft scrollbars */
+* { scrollbar-width: thin; scrollbar-color: var(--p-line) transparent; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-thumb { background: var(--p-line); border-radius: 999px; }
+*::-webkit-scrollbar-track { background: transparent; }
+
+/* Gentle global softening — rounder, softer shadows for a bubbly feel.
+   These nudge the whole app warmer without touching component logic. */
+button { transition: transform .12s ease, background-color .2s ease, box-shadow .2s ease; }
+button:hover:not(:disabled) { transform: translateY(-1px); }
+button:active:not(:disabled) { transform: translateY(0) scale(.98); }
+
+/* Utility overrides: repaint the launchpad's cool slate/indigo base toward warm dawn.
+   Component classes still win where set, but these shift the ambient feel. */
+.bg-\[\#F8FAFC\] { background-color: var(--p-cream) !important; }
+.bg-slate-50 { background-color: var(--p-cream-2) !important; }
+.bg-slate-50\/80 { background-color: color-mix(in srgb, var(--p-cream-2) 80%, transparent) !important; }
+
+/* ---- Optional accent remap (uncomment to also warm indigo without class swaps) ----
+   These recolor the launchpad's indigo accents to sage/coral globally. Kept commented
+   so you can choose class-swaps (cleaner) OR this blanket remap (faster). */
+
+.bg-indigo-600 { background-color: var(--p-sage) !important; }
+.bg-indigo-700, .hover\:bg-indigo-700:hover { background-color: var(--p-sage-deep) !important; }
+.text-indigo-600 { color: var(--p-sage-deep) !important; }
+.bg-indigo-50 { background-color: color-mix(in srgb, var(--p-sage) 14%, white) !important; }
+.text-indigo-700 { color: var(--p-sage-deep) !important; }
+.shadow-indigo-200, .shadow-indigo-200\/50 { --tw-shadow-color: color-mix(in srgb, var(--p-sage) 40%, white) !important; }
+.from-indigo-900 { --tw-gradient-from: var(--p-sage-deep) !important; }
+.to-indigo-800 { --tw-gradient-to: var(--p-sage) !important; }
+
+
+/* ============================================================
+   Markdown (unchanged from original)
+   ============================================================ */
 .markdown-body {
   font-size: 0.875rem;
   line-height: 1.625;
 }
-
 .markdown-body p {
   margin-bottom: 0.75rem;
 }
-
 .markdown-body p:last-child {
   margin-bottom: 0;
 }
-
 .markdown-body ul,
 .markdown-body ol {
   margin-top: 0.5rem;
   margin-bottom: 0.75rem;
   padding-left: 1.25rem;
 }
-
 .markdown-body ul {
   list-style-type: disc;
 }
-
 .markdown-body ol {
   list-style-type: decimal;
 }
-
 .markdown-body li {
   margin-bottom: 0.25rem;
 }
-
 .markdown-body strong {
   font-weight: 600;
 }
-
 .markdown-body blockquote {
   border-left: 3px solid currentColor;
   padding-left: 0.75rem;
@@ -44,7 +94,6 @@
   opacity: 0.9;
   font-style: italic;
 }
-
 .markdown-body code {
   background-color: rgba(0, 0, 0, 0.1);
   padding: 0.15rem 0.35rem;
