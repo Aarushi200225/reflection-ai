@@ -11,12 +11,15 @@ import {
   AlertCircle,
   RefreshCw,
   HelpCircle,
+  MapPin,
 } from 'lucide-react';
+import { EntryLocationMap } from './EntryLocationMap';
 
 interface ActiveReflectionProps {
   interaction: JournalInteraction;
   onUpdateInteraction: (updated: Partial<JournalInteraction>) => Promise<void>;
   onSendToGemini: (text: string) => Promise<void>;
+  onAddLocation: () => Promise<void>;
   isThinking: boolean;
   isSaving: boolean;
   error: string | null;
@@ -35,6 +38,7 @@ export const ActiveReflection: React.FC<ActiveReflectionProps> = ({
   interaction,
   onUpdateInteraction,
   onSendToGemini,
+  onAddLocation,
   isThinking,
   isSaving,
   error,
@@ -155,6 +159,15 @@ export const ActiveReflection: React.FC<ActiveReflectionProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onAddLocation}
+            title="Attach current location"
+            className="flex items-center gap-1.5 px-3 py-1 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-full text-[11px] font-bold transition-all"
+          >
+            <MapPin className="w-3.5 h-3.5" />
+            <span>{interaction.location ? 'Located' : 'Add location'}</span>
+          </button>
           {isSaving ? (
             <div className="flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-700 rounded-full text-[11px] font-bold">
               <RefreshCw className="w-3 h-3 animate-spin" />
@@ -187,6 +200,11 @@ export const ActiveReflection: React.FC<ActiveReflectionProps> = ({
 
       {/* Conversation Messages Container */}
       <div className="flex-grow p-6 overflow-y-auto flex flex-col gap-5">
+        {interaction.location && (
+          <div className="max-w-xs">
+            <EntryLocationMap location={interaction.location} />
+          </div>
+        )}
         {interaction.messages.length === 0 ? (
           <div className="my-auto flex flex-col items-center justify-center text-center max-w-md mx-auto py-8">
             <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mb-3">
