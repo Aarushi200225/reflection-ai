@@ -70,6 +70,7 @@ export function subscribeToUserInteractions(
           tags: Array.isArray(data.tags) ? data.tags : [],
           mood: data.mood || 'Reflective',
           pinned: Boolean(data.pinned),
+          location: data.location || undefined,
         });
       });
       onUpdate(results);
@@ -106,6 +107,7 @@ export async function saveUserInteraction(
     tags: interaction.tags || [],
     mood: interaction.mood || 'Reflective',
     pinned: Boolean(interaction.pinned),
+    location: interaction.location || undefined,
   };
 
   const cleanData = sanitizePayload(payload);
