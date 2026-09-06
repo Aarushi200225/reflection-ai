@@ -15,6 +15,7 @@ import { GeminiInsights } from './components/GeminiInsights';
 import { ConsistencyMindscape } from './components/ConsistencyMindscape';
 import { JournalWrappedModal } from './components/JournalWrappedModal';
 import { RefreshCw } from 'lucide-react';
+import { captureLocation } from './services/locationService';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
