@@ -1,11 +1,11 @@
 # Reflection.ai — A Secure, Grounded Second-Brain Journal
 
-A production-grade, user-authenticated journaling web app that grounds AI responses in your
-**own** past entries. 
+A AI-native, production-grade, user-authenticated journaling web app that grounds AI responses in your
+**own** past entries, inspired by the second-brain architecture.
 
-Reflection.ai re-architects the Ideathon starter (a single-service journal calling Gemini
-directly) into a **two-tier, multi-agent system** — a React web tier and a Python
-**LangGraph** agent tier — while meeting every mandatory security requirement.
+Reflection.ai re-architects a starter single-service journal calling Gemini
+directly, into a **two-tier, multi-agent system** — a React web tier and a Python
+**LangGraph** agent tier with a grounded-RAG reflection, making sure it's served through a defense-in-depth, zero-trust boundary with per-user data isolation and runtime secret management on Cloud Run.
 
 **Live app:** `https://reflection-web-2pyxqsldiq-uc.a.run.app`
 **Stack:** Firebase Auth · Cloud Firestore · Gemini · Cloud Run · Secret Manager · Google AI Studio · LangGraph / LangChain
